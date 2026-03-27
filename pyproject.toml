@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Rhea REST and download API CLI"
 readme = "README.md"
 license = "MIT"
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 
 [project.scripts]
 rhea = "rhea_cli.cli:main"
@@ -26,7 +26,9 @@ where = ["src"]
 
 [dependency-groups]
 dev = [
+  "build>=1.2.2",
   "mypy>=1.18.2",
+  "pytest>=8.4.2",
   "ruff>=0.13.2",
 ]
 
@@ -48,7 +50,7 @@ select = [
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.13"
 files = ["src/rhea_cli"]
 strict = true
 warn_unused_ignores = true
