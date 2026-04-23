@@ -7,6 +7,7 @@ from typing import Any
 from .client import RheaHttpClient
 from .columns import DEFAULT_COLUMNS
 from .core import RheaError, RheaService, parse_columns
+from .sparql import SPARQL_PRESETS, render_sparql_preset
 
 
 def _add_common_connection_args(parser: argparse.ArgumentParser) -> None:
@@ -14,6 +15,7 @@ def _add_common_connection_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--timeout", type=float)
     parser.add_argument("--base-url")
     parser.add_argument("--ftp-base-url")
+    parser.add_argument("--sparql-base-url")
 
 
 def _add_query_args(parser: argparse.ArgumentParser, *, default_columns: list[str]) -> None:
@@ -30,6 +32,11 @@ def _add_query_args(parser: argparse.ArgumentParser, *, default_columns: list[st
 def _configure_download_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("rhea_id")
     parser.add_argument("--direction", choices=["auto", "master", "lr", "rl", "bi"], default="auto")
+
+
+def _add_sparql_result_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--format", choices=["json", "text", "csv", "tsv", "raw"], default="text")
+    parser.add_argument("--accept")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -166,6 +173,28 @@ def build_parser() -> argparse.ArgumentParser:
     dl.add_argument("path_or_url")
     dl.add_argument("output")
     dl.add_argument("--format", choices=["json", "text"], default="json")
+
+    sparql = subparsers.add_parser("sparql")
+    sparql.set_defaults(sparql_parser=sparql)
+    sparql_sub = sparql.add_subparsers(dest="sparql_command")
+
+    sparql_query = sparql_sub.add_parser("query")
+    sparql_query.add_argument("query", nargs="?")
+    sparql_query.add_argument("--file")
+    _add_sparql_result_args(sparql_query)
+
+    sparql_queries = sparql_sub.add_parser("queries")
+    sparql_queries.add_argument("--format", choices=["json", "text", "tsv"], default="text")
+
+    sparql_show = sparql_sub.add_parser("show")
+    sparql_show.add_argument("name", choices=sorted(SPARQL_PRESETS))
+    sparql_show.add_argument("--limit", type=int, default=25)
+    sparql_show.add_argument("--format", choices=["text", "json"], default="text")
+
+    for preset_name in sorted(SPARQL_PRESETS):
+        preset = sparql_sub.add_parser(preset_name)
+        preset.add_argument("--limit", type=int, default=25)
+        _add_sparql_result_args(preset)
     return parser
 
 
@@ -174,6 +203,7 @@ def _build_service(args: argparse.Namespace) -> RheaService:
         RheaHttpClient(
             base_url=args.base_url,
             ftp_base_url=args.ftp_base_url,
+            sparql_base_url=args.sparql_base_url,
             timeout=args.timeout,
             email=args.email,
         )
@@ -252,6 +282,29 @@ def _display_value(value: Any) -> str:
     if isinstance(value, dict):
         return _to_json(value)
     return str(value)
+
+
+def _resolve_sparql_query(args: argparse.Namespace) -> str:
+    if getattr(args, "file", None):
+        with open(args.file, "r", encoding="utf-8") as handle:
+            return handle.read()
+    query = getattr(args, "query", None)
+    if isinstance(query, str) and query:
+        return query
+    raise RheaError("provide a SPARQL query string or --file")
+
+
+def _render_sparql_result(payload: dict[str, Any], output_format: str) -> str:
+    if output_format in {"csv", "tsv", "raw"}:
+        return str(payload["body"])
+    if output_format == "json":
+        return _to_json(payload.get("raw", payload))
+    if payload.get("kind") == "ask":
+        return "true" if payload.get("boolean") else "false"
+    if payload.get("kind") == "select":
+        variables = list(payload.get("variables", []))
+        return _render_table(payload.get("items", []), variables)
+    return str(payload["body"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -450,6 +503,44 @@ def main(argv: list[str] | None = None) -> int:
                     else _render_table([payload], list(payload))
                 )
                 return 0
+        if args.command == "sparql":
+            if args.sparql_command is None:
+                args.sparql_parser.print_help()
+                return 0
+            if args.sparql_command == "query":
+                payload = service.sparql_query(
+                    _resolve_sparql_query(args), output_format=args.format, accept=args.accept
+                )
+                print(_render_sparql_result(payload, args.format))
+                return 0
+            if args.sparql_command == "queries":
+                payload = service.list_sparql_queries()
+                if args.format == "json":
+                    print(_to_json(payload))
+                else:
+                    print(
+                        _render_items(
+                            {"items": payload["items"], "normalizedItems": payload["items"]},
+                            args.format,
+                            ["name", "description"],
+                        )
+                    )
+                return 0
+            if args.sparql_command == "show":
+                query = render_sparql_preset(args.name, limit=args.limit)
+                if args.format == "json":
+                    print(_to_json({"name": args.name, "limit": args.limit, "query": query}))
+                else:
+                    print(query)
+                return 0
+            payload = service.sparql_preset(
+                args.sparql_command,
+                limit=args.limit,
+                output_format=args.format,
+                accept=args.accept,
+            )
+            print(_render_sparql_result(payload, args.format))
+            return 0
         if args.command == "archive":
             if args.archive_command == "ls":
                 payload = service.archives.category_manifest(args.path)

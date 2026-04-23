@@ -16,6 +16,12 @@ from .columns import (
     parse_columns,
     summarize_normalized_value,
 )
+from .sparql import (
+    list_sparql_presets,
+    parse_sparql_json,
+    render_sparql_preset,
+    sparql_accept_header,
+)
 
 FULL_SCAN_LIMIT = 200000
 RHEA_ID_RE = re.compile(r"^(?:RHEA:)?\d+$", re.IGNORECASE)
@@ -337,6 +343,39 @@ class RheaService:
                 for spec in DOCUMENTED_COLUMN_SPECS.values()
             ],
         }
+
+    def sparql_query(
+        self, query: str, *, output_format: str, accept: str | None = None
+    ) -> dict[str, Any]:
+        response = self.client.request(
+            method="GET",
+            path="/sparql",
+            query={"query": query},
+            base="sparql",
+            accept=sparql_accept_header(output_format, accept),
+        )
+        payload: dict[str, Any] = {
+            "query": query,
+            "contentType": getattr(response, "content_type", ""),
+            "body": response.text(),
+        }
+        if "json" in str(payload["contentType"]) or payload["body"].lstrip().startswith("{"):
+            raw = response.json()
+            payload["raw"] = raw
+            payload.update(parse_sparql_json(raw))
+        return payload
+
+    def list_sparql_queries(self) -> dict[str, Any]:
+        items = list_sparql_presets()
+        return {"count": len(items), "items": items}
+
+    def sparql_preset(
+        self, name: str, *, limit: int, output_format: str, accept: str | None = None
+    ) -> dict[str, Any]:
+        query = render_sparql_preset(name, limit=limit)
+        result = self.sparql_query(query, output_format=output_format, accept=accept)
+        result["preset"] = name
+        return result
 
     def _single_row(self, rhea_id: str, columns: list[str]) -> dict[str, str]:
         normalized = normalize_rhea_id(rhea_id)

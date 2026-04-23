@@ -12,15 +12,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from rhea_cli.archive import parse_index
 from rhea_cli.columns import normalize_row, parse_columns
 from rhea_cli.core import RheaError, RheaService, normalize_rhea_id
+from rhea_cli.sparql import parse_sparql_json, render_sparql_preset
 
 
 class FakeResponse:
     def __init__(self, text: str, body: bytes | None = None) -> None:
         self._text = text
         self.body = body if body is not None else text.encode("utf-8")
+        self.content_type = "application/json" if text.lstrip().startswith("{") else "text/plain"
 
     def text(self) -> str:
         return self._text
+
+    def json(self) -> Any:
+        return json.loads(self._text)
 
 
 class FakeClient:
@@ -196,6 +201,41 @@ class CoreTests(unittest.TestCase):
     def test_invalid_uniprot_raises(self) -> None:
         with self.assertRaises(RheaError):
             RheaService(FakeClient({})).protein("bad", columns=["rhea-id"], limit=1)
+
+    def test_parse_sparql_json_select(self) -> None:
+        parsed = parse_sparql_json(
+            {
+                "head": {"vars": ["predicate", "count"]},
+                "results": {
+                    "bindings": [
+                        {
+                            "predicate": {"type": "uri", "value": "http://example/p"},
+                            "count": {
+                                "type": "literal",
+                                "datatype": "http://www.w3.org/2001/XMLSchema#integer",
+                                "value": "3",
+                            },
+                        }
+                    ]
+                },
+            }
+        )
+        self.assertEqual(parsed["kind"], "select")
+        self.assertEqual(parsed["items"][0]["count"], "3^^http://www.w3.org/2001/XMLSchema#integer")
+
+    def test_sparql_query_parses_boolean_result(self) -> None:
+        client = FakeClient(
+            {
+                ("sparql", "/sparql"): FakeResponse('{"head": {"link": []}, "boolean": true}'),
+            }
+        )
+        payload = RheaService(client).sparql_query("ASK { ?s ?p ?o }", output_format="json")
+        self.assertEqual(payload["kind"], "ask")
+        self.assertTrue(payload["boolean"])
+
+    def test_render_sparql_preset_includes_limit(self) -> None:
+        query = render_sparql_preset("predicates", limit=7)
+        self.assertIn("LIMIT 7", query)
 
 
 if __name__ == "__main__":

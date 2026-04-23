@@ -10,6 +10,7 @@ from typing import Any
 
 DEFAULT_BASE_URL = "https://www.rhea-db.org"
 DEFAULT_FTP_BASE_URL = "https://ftp.expasy.org/databases/rhea"
+DEFAULT_SPARQL_BASE_URL = "https://sparql.rhea-db.org"
 DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
@@ -40,6 +41,7 @@ class RheaHttpClient:
         *,
         base_url: str | None = None,
         ftp_base_url: str | None = None,
+        sparql_base_url: str | None = None,
         timeout: float | None = None,
         user_agent: str | None = None,
         email: str | None = None,
@@ -49,6 +51,9 @@ class RheaHttpClient:
         )
         self.ftp_base_url = (
             ftp_base_url or os.environ.get("RHEA_FTP_BASE_URL") or DEFAULT_FTP_BASE_URL
+        ).rstrip("/")
+        self.sparql_base_url = (
+            sparql_base_url or os.environ.get("RHEA_SPARQL_BASE_URL") or DEFAULT_SPARQL_BASE_URL
         ).rstrip("/")
         timeout_raw = os.environ.get("RHEA_TIMEOUT_SECONDS")
         self.timeout = (
@@ -75,7 +80,13 @@ class RheaHttpClient:
             else:
                 query_items.append((key, str(value)))
 
-        root = self.base_url if base == "web" else self.ftp_base_url
+        root = (
+            self.base_url
+            if base == "web"
+            else self.ftp_base_url
+            if base == "ftp"
+            else self.sparql_base_url
+        )
         url = (
             path
             if path.startswith("http://") or path.startswith("https://")

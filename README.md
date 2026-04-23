@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-0ea5e9)
 ![License](https://img.shields.io/badge/license-MIT-14b8a6)
 
-Command-line client for Rhea search, relationship lookup, directional downloads, release inspection, and archive browsing.
+Command-line client for Rhea search, relationship lookup, directional downloads, release inspection, archive browsing, and SPARQL querying.
 
 </div>
 
@@ -48,6 +48,11 @@ $$\color{#0EA5E9}Release \space \color{#14B8A6}Archive$$
 - `rhea archive ls|members|download`: browse and extract archive contents.
 - `rhea search` and `rhea fetch`: compatibility entrypoints over the same underlying workflows.
 
+$$\color{#0EA5E9}SPARQL \space \color{#14B8A6}Discovery$$
+- `rhea sparql query`: run an arbitrary query against `https://sparql.rhea-db.org/sparql`.
+- `rhea sparql queries|show`: list the built-in schema-discovery queries and print their source.
+- `rhea sparql graphs|classes|predicates|predicate-examples|reaction-predicates|reaction-shape`: inspect the endpoint schema and common reaction resource fields.
+
 ## Configuration
 $$\color{#0EA5E9}Tune \space \color{#14B8A6}Defaults$$
 
@@ -57,6 +62,7 @@ Environment variables:
 - `RHEA_USER_AGENT`
 - `RHEA_BASE_URL`
 - `RHEA_FTP_BASE_URL`
+- `RHEA_SPARQL_BASE_URL`
 - `RHEA_TIMEOUT_SECONDS`
 
 Notes:
@@ -64,6 +70,7 @@ Notes:
 - Master reactions such as `RHEA:10000` do not have direct `RXN` or `RD` files.
 - Directional counterparts do, such as `RHEA:10001`, `RHEA:10002`, and `RHEA:10003`.
 - The CLI uses the documented query and release surfaces rather than browser-only entry pages.
+- For non-`SELECT` or non-`ASK` SPARQL queries, prefer `--format raw` and, when needed, pass an explicit `--accept` header such as `text/turtle`.
 
 ## Quick Start
 $$\color{#0EA5E9}Try \space \color{#14B8A6}Lookup$$
@@ -77,6 +84,10 @@ rhea xrefs 10000 --format text
 rhea download 10000 --direction lr --file-format rxn
 rhea release current --format json
 rhea archive members tsv/rhea-tsv.tar.gz --limit 20 --format json
+rhea sparql query 'SELECT * WHERE { ?s ?p ?o } LIMIT 5' --format json
+rhea sparql queries
+rhea sparql predicates --limit 20
+rhea sparql show reaction-shape
 ```
 
 ## Credits
