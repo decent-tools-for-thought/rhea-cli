@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.11%2B-0ea5e9)
 ![License](https://img.shields.io/badge/license-MIT-14b8a6)
 
-Command-line client for Rhea search, relationship lookup, directional downloads, release inspection, archive browsing, and SPARQL querying.
+Command-line client for Rhea search, bulk table and cross-reference export, relationship lookup, directional downloads, release inspection, archive browsing, and SPARQL querying.
 
 </div>
 
@@ -17,6 +17,8 @@ Command-line client for Rhea search, relationship lookup, directional downloads,
 - [Install](#install)
 - [Functionality](#functionality)
 - [Configuration](#configuration)
+- [Query Grammar](#query-grammar)
+- [Bulk & Programmatic](#bulk--programmatic)
 - [Quick Start](#quick-start)
 - [Credits](#credits)
 
@@ -39,14 +41,23 @@ $$\color{#0EA5E9}Graph \space \color{#14B8A6}Browse$$
 - `rhea explain|resolve`: summarize and normalize mixed lookup inputs.
 
 $$\color{#0EA5E9}Table \space \color{#14B8A6}Export$$
-- `rhea ids|table|grep|columns`: work with Rhea table-style query exports and column selection.
+- `rhea search|table <query>`: query the reaction table; add `--fetch-all` for the complete result set as TSV/JSON.
+- `rhea ids|grep`: export `rhea-id` (or `rhea-id`+`equation`) for a query, also with `--fetch-all`.
+- `rhea fields|columns`: list the searchable query fields and the selectable result columns.
 - `rhea equation`: print a reaction equation summary.
 - `rhea download <id> --file-format rxn|rd`: fetch directional reaction files.
+
+$$\color{#0EA5E9}Bulk \space \color{#14B8A6}Mappings$$
+- `rhea mappings list`: list the canonical, release-pinned `rhea2*` cross-reference tables.
+- `rhea mappings get <name>`: download or parse one mapping (e.g. `ec`, `uniprot`, `go`, `kegg`, `metacyc`, `xrefs`).
 
 $$\color{#0EA5E9}Release \space \color{#14B8A6}Archive$$
 - `rhea release current|list|files|bundle`: inspect published releases and downloadable file groups.
 - `rhea archive ls|members|download`: browse and extract archive contents.
-- `rhea search` and `rhea fetch`: compatibility entrypoints over the same underlying workflows.
+
+$$\color{#0EA5E9}Self \space \color{#14B8A6}Discovery$$
+- `rhea docs [section]`: describe the whole command surface, query grammar, mappings, columns, and data sources (`--format json` for a machine-readable surface).
+- `rhea fields`: list searchable query fields with examples and wildcard rules.
 
 $$\color{#0EA5E9}SPARQL \space \color{#14B8A6}Discovery$$
 - `rhea sparql query`: run an arbitrary query against `https://sparql.rhea-db.org/sparql`.
@@ -72,12 +83,45 @@ Notes:
 - The CLI uses the documented query and release surfaces rather than browser-only entry pages.
 - For non-`SELECT` or non-`ASK` SPARQL queries, prefer `--format raw` and, when needed, pass an explicit `--accept` header such as `text/turtle`.
 
+## Query Grammar
+$$\color{#0EA5E9}Search \space \color{#14B8A6}Syntax$$
+
+The `query` argument to `search`/`table`/`ids` maps onto the Rhea web query endpoint. Run `rhea fields` for the live list.
+
+- Field/value: `ec:1.1.1.1`, `chebi:15377`, `uniprot:P00350`, `pubmed:12345678`, `rhea:10000`.
+- Free text: any bare term, e.g. `oxidoreductase`.
+- Wildcard: `*` matches everything for a field, e.g. `ec:*` returns every reaction carrying an EC number.
+- Whole table: an empty query (`''`) matches all reactions.
+- Add `--fetch-all` to export the complete result set instead of the first `--limit` rows.
+
+## Bulk & Programmatic
+$$\color{#0EA5E9}Scale \space \color{#14B8A6}Up$$
+
+For repeatable bulk work, prefer these over scraping per-record:
+
+- Full EC→Rhea (or any field) table in one call: `rhea search 'ec:*' --columns rhea-id,ec --fetch-all --format tsv`.
+- Canonical, release-pinned cross-reference files: `rhea mappings get ec` (or `--output rhea2ec.tsv` to save the raw file).
+- In a Python script, import the library instead of subprocessing per record:
+
+```python
+from rhea_cli import RheaService
+
+service = RheaService()
+table = service.search(query="ec:*", columns=["rhea-id", "ec"], limit=0, fetch_all=True)
+mapping = service.fetch_mapping("ec")  # parsed rhea2ec.tsv rows
+```
+
 ## Quick Start
 $$\color{#0EA5E9}Try \space \color{#14B8A6}Lookup$$
 
 ```bash
+rhea docs
+rhea fields
 rhea reaction 10000
 rhea compound CHEBI:15377
+rhea search 'ec:*' --columns rhea-id,ec --fetch-all --format tsv
+rhea mappings list
+rhea mappings get ec --limit 20
 rhea directions 10000
 rhea participants 10000 --format json
 rhea xrefs 10000 --format text

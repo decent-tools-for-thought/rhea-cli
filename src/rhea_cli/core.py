@@ -16,6 +16,12 @@ from .columns import (
     parse_columns,
     summarize_normalized_value,
 )
+from .mappings import (
+    decode_mapping_body,
+    list_mapping_datasets,
+    parse_mapping_rows,
+    resolve_mapping,
+)
 from .sparql import (
     list_sparql_presets,
     parse_sparql_json,
@@ -343,6 +349,56 @@ class RheaService:
                 for spec in DOCUMENTED_COLUMN_SPECS.values()
             ],
         }
+
+    def list_query_fields(self) -> dict[str, Any]:
+        from .docs import QUERY_FIELDS, QUERY_GRAMMAR_NOTES
+
+        return {
+            "count": len(QUERY_FIELDS),
+            "grammar": list(QUERY_GRAMMAR_NOTES),
+            "items": [
+                {"name": field.name, "description": field.description, "example": field.example}
+                for field in QUERY_FIELDS
+            ],
+        }
+
+    def list_mappings(self) -> dict[str, Any]:
+        items = list_mapping_datasets(self.client.ftp_base_url)
+        return {"count": len(items), "items": items}
+
+    def fetch_mapping(self, name: str, *, limit: int | None = None) -> dict[str, Any]:
+        try:
+            dataset = resolve_mapping(name)
+        except KeyError as exc:
+            raise RheaError(str(exc)) from exc
+        response = self.client.request(
+            method="GET",
+            path=f"tsv/{dataset.file}",
+            base="ftp",
+            accept="text/tab-separated-values, text/plain, application/octet-stream",
+        )
+        text = decode_mapping_body(response.body, gzipped=dataset.gzipped)
+        columns, rows = parse_mapping_rows(text, limit=limit)
+        return {
+            "mapping": dataset.name,
+            "file": dataset.file,
+            "target": dataset.target,
+            "description": dataset.description,
+            "url": f"{self.client.ftp_base_url}/tsv/{dataset.file}",
+            "columns": columns,
+            "count": len(rows),
+            "items": rows,
+        }
+
+    def download_mapping(self, name: str, output_path: str) -> dict[str, Any]:
+        try:
+            dataset = resolve_mapping(name)
+        except KeyError as exc:
+            raise RheaError(str(exc)) from exc
+        result = self.archives.download(f"tsv/{dataset.file}", output_path)
+        result["mapping"] = dataset.name
+        result["file"] = dataset.file
+        return result
 
     def sparql_query(
         self, query: str, *, output_format: str, accept: str | None = None

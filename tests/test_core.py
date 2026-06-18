@@ -55,6 +55,14 @@ def directions_tsv() -> str:
     return "RHEA_ID_MASTER\tRHEA_ID_LR\tRHEA_ID_RL\tRHEA_ID_BI\n10000\t10001\t10002\t10003\n"
 
 
+def rhea2ec_tsv() -> str:
+    return (
+        "RHEA_ID\tDIRECTION\tMASTER_ID\tID\n"
+        "10000\tUN\t10000\t3.5.1.50\n"
+        "10004\tUN\t10004\t5.99.1.1\n"
+    )
+
+
 def full_table_text() -> str:
     return (
         "Reaction identifier\tEquation\tChEBI name\tChEBI identifier\tEC number\tEnzymes\tGene Ontology\tPubMed\tCross-reference (KEGG)\n"
@@ -236,6 +244,28 @@ class CoreTests(unittest.TestCase):
     def test_render_sparql_preset_includes_limit(self) -> None:
         query = render_sparql_preset("predicates", limit=7)
         self.assertIn("LIMIT 7", query)
+
+    def test_list_mappings_builds_urls(self) -> None:
+        payload = RheaService(FakeClient({})).list_mappings()
+        ec = next(item for item in payload["items"] if item["name"] == "ec")
+        self.assertTrue(ec["url"].endswith("/tsv/rhea2ec.tsv"))
+        self.assertEqual(ec["target"], "EC")
+
+    def test_fetch_mapping_parses_canonical_table(self) -> None:
+        client = FakeClient({("ftp", "tsv/rhea2ec.tsv"): FakeResponse(rhea2ec_tsv())})
+        payload = RheaService(client).fetch_mapping("ec", limit=1)
+        self.assertEqual(payload["columns"][0], "RHEA_ID")
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["items"][0]["ID"], "3.5.1.50")
+
+    def test_fetch_mapping_unknown_name_raises(self) -> None:
+        with self.assertRaises(RheaError):
+            RheaService(FakeClient({})).fetch_mapping("nope")
+
+    def test_list_query_fields_includes_ec(self) -> None:
+        payload = RheaService(FakeClient({})).list_query_fields()
+        self.assertIn("ec", [item["name"] for item in payload["items"]])
+        self.assertTrue(payload["grammar"])
 
 
 if __name__ == "__main__":

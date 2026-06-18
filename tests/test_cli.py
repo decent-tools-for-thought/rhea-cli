@@ -90,6 +90,54 @@ class CliTests(unittest.TestCase):
         self.assertEqual(stderr, "")
         self.assertEqual(stdout.strip(), "true")
 
+    def test_fields_lists_query_fields(self) -> None:
+        code, stdout, stderr = self._run(["fields", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        payload = json.loads(stdout)
+        self.assertIn("ec", [item["name"] for item in payload["items"]])
+
+    def test_docs_json_describes_surface(self) -> None:
+        code, stdout, stderr = self._run(["docs", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        payload = json.loads(stdout)
+        self.assertEqual(payload["kind"], "rhea_cli_docs")
+        self.assertTrue(any(item["name"] == "ec" for item in payload["mappings"]))
+
+    def test_mappings_list_json(self) -> None:
+        with patch("rhea_cli.cli._build_service") as build_service:
+            fake = build_service.return_value
+            fake.list_mappings.return_value = {
+                "count": 1,
+                "items": [
+                    {
+                        "name": "ec",
+                        "target": "EC",
+                        "file": "rhea2ec.tsv",
+                        "description": "Rhea to EC",
+                        "url": "https://ftp.example/rhea/tsv/rhea2ec.tsv",
+                    }
+                ],
+            }
+            code, stdout, stderr = self._run(["mappings", "list", "--format", "json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertEqual(json.loads(stdout)["items"][0]["name"], "ec")
+
+    def test_mappings_get_renders_tsv(self) -> None:
+        with patch("rhea_cli.cli._build_service") as build_service:
+            fake = build_service.return_value
+            fake.fetch_mapping.return_value = {
+                "columns": ["RHEA_ID", "ID"],
+                "items": [{"RHEA_ID": "10000", "ID": "3.5.1.50"}],
+            }
+            code, stdout, stderr = self._run(["mappings", "get", "ec", "--limit", "1"])
+        self.assertEqual(code, 0)
+        self.assertEqual(stderr, "")
+        self.assertIn("3.5.1.50", stdout)
+        fake.fetch_mapping.assert_called_once_with("ec", limit=1)
+
     def test_sparql_show_prints_query_text(self) -> None:
         code, stdout, stderr = self._run(["sparql", "show", "predicates", "--limit", "3"])
         self.assertEqual(code, 0)
